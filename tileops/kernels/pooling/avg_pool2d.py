@@ -41,46 +41,33 @@ def _avg_pooling_2d_fwd_kernel(
     dtype: str,
     accum_dtype: str,
 ) -> Callable:
-    @tilelang.jit(out_idx=[4])
-    def _func(block_bc: int, threads: int) -> None:
+    @tilelang.jit(out_idx=[1])
+    def _func(bdim: int, threads: int) -> None:
         @T.prim_func
         def main(
             x: T.Tensor((batch, channels, in_h, in_w), dtype),
             y: T.Tensor((batch, channels, out_h, out_w), dtype),
         ) -> None:
-            with T.Kernel(
-                T.ceildiv(batch * channels, block_bc), out_h, out_w, threads=threads
-            ) as (pid_bc, pid_h, pid_w):
-                bc = pid_bc * block_bc
-                block_size = T.min(block_bc, batch * channels - bc)
+            with T.Kernel(batch * channels, out_h, out_w, threads=threads) as (i_bc, i_h, i_w):
+                i_b = i_bc // channels
+                i_c = i_bc % channels
 
-                b = bc // channels
-                c = bc % channels
-
-                # Allocate shared and local buffers
-                kh = kernel_h
-                kw = kernel_w
-                x_shared = T.alloc_shared((block_size, kh, kw), dtype)
-                out_local = T.alloc_fragment((block_size,), accum_dtype)
-
-                # Initialize output accumulator to zero
-                for i in T.Parallel(block_size):
-                    out_local[i] = T.cast(0, accum_dtype)
-
-                # Load input data for this output position and accumulate sum
-                for khi, kwi in T.Parallel(kh, kw):
-                    h_idx = pid_h * stride_h - padding_h + khi * dilation_h
-                    w_idx = pid_w * stride_w - padding_w + kwi * dilation_w
-                    if 0 <= h_idx < in_h and 0 <= w_idx < in_w:
-                        for i in T.Parallel(block_size):
-                            val = T.cast(x[b + i, c, h_idx, w_idx], accum_dtype)
-                            out_local[i] = out_local[i] + val
-
-                # Divide by kernel size to get mean
-                kernel_size_sum = kh * kw
-                for i in T.Parallel(block_size):
-                    y[b + i, c, pid_h, pid_w] = T.cast(
-                        out_local[i] / T.cast(kernel_size_sum, accum_dtype), dtype)
+                # Allocate local accumulator
+                acc = T.alloc_fragment((1,), accum_dtype)
+                if i_h < out_h and i_w < out_w:
+                    acc[0] = T.cast(0, accum_dtype)
+                    # Sum over kernel window
+                    for khi in T.Serial(kernel_h):
+                        for kwi in T.Serial(kernel_w):
+                            h_idx = i_h * stride_h - padding_h + khi * dilation_h
+                            w_idx = i_w * stride_w - padding_w + kwi * dilation_w
+                            if 0 <= h_idx < in_h and 0 <= w_idx < in_w:
+                                val = T.cast(x[i_b, i_c, h_idx, w_idx], accum_dtype)
+                                acc[0] = acc[0] + val
+                    # Write average
+                    kernel_size_sum = kernel_h * kernel_w
+                    result = T.cast(acc[0] / T.cast(kernel_size_sum, accum_dtype), dtype)
+                    y[i_b, i_c, i_h, i_w] = result
 
         return main
 
@@ -105,7 +92,7 @@ def _avg_pooling_2d_fwd_wrapped(
     dilation_w: int,
     dtype_str: str,
     accum_dtype_str: str,
-    block_bc: int,
+    bdim: int,
     threads: int,
     x: torch.Tensor,
 ) -> torch.Tensor:
@@ -126,7 +113,7 @@ def _avg_pooling_2d_fwd_wrapped(
         dilation_w,
         dtype_str,
         accum_dtype_str,
-    )(block_bc, threads)(x)
+    )(bdim, threads)(x)
 
 
 @_avg_pooling_2d_fwd_wrapped.register_fake
@@ -147,13 +134,13 @@ def _(
     dilation_w: int,
     dtype_str: str,
     accum_dtype_str: str,
-    block_bc: int,
+    bdim: int,
     threads: int,
     x: torch.Tensor,
 ) -> torch.Tensor:
     _ = (
         in_h, in_w, kernel_h, kernel_w, stride_h, stride_w,
-        padding_h, padding_w, dilation_h, dilation_w, block_bc, threads, dtype_str, accum_dtype_str
+        padding_h, padding_w, dilation_h, dilation_w, bdim, threads, dtype_str, accum_dtype_str
     )
     return torch.empty((batch, channels, out_h, out_w), dtype=x.dtype, device=x.device)
 
@@ -287,13 +274,13 @@ class AvgPooling2dKernel(Kernel):
 
     @property
     def default_config(self) -> dict:
-        return {"block_bc": 1, "threads": 128}
+        return {"bdim": 1, "threads": 128}
 
     @property
     def autotune_configs(self) -> list[dict]:
-        block_bcs = [1, 2, 4]
-        threads_list = [64, 128, 256]
-        return [{"block_bc": bb, "threads": t} for bb in block_bcs for t in threads_list]
+        bdims = [1]
+        threads_list = [128, 256]
+        return [{"bdim": b, "threads": t} for b in bdims for t in threads_list]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return _avg_pooling_2d_fwd_wrapped(
@@ -313,7 +300,7 @@ class AvgPooling2dKernel(Kernel):
             self.dilation_w,
             self.dtype_str,
             self.accum_dtype_str,
-            self.config["block_bc"],
+            self.config["bdim"],
             self.config["threads"],
             x,
         )

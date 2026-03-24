@@ -54,11 +54,8 @@ class AvgPooling2dFixture(FixtureBase):
                     1, 8, 64, 64, 4, 4, 0, 1, torch.float16, False,
                     marks=pytest.mark.full,
                 ),
-                # Dilation tests
-                pytest.param(
-                    1, 4, 32, 32, 3, 1, 2, 2, torch.float16, False,
-                    marks=pytest.mark.full,
-                ),
+                # NOTE: PyTorch's avg_pool2d does NOT support dilation.
+                # Dilation tests are skipped as there is no reference to compare against.
             ],
         ),
     ]

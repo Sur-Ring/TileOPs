@@ -42,35 +42,24 @@ def _avg_pooling_1d_fwd_kernel(
             x: T.Tensor((batch, channels, in_seq_len), dtype),
             y: T.Tensor((batch, channels, out_seq_len), dtype),
         ) -> None:
-            # Each block handles ONE (batch, channel, output_position) tuple
-            # Grid: (out_seq_len, T.ceildiv(batch * channels, bdim))
-            with T.Kernel(
-                out_seq_len, T.ceildiv(batch * channels, bdim), threads=threads
-            ) as (i_o, i_bc):
+            # Tile over all output positions with bdim threads per block
+            with T.Kernel(batch * channels, out_seq_len, threads=threads) as (i_bc, i_o):
                 i_b = i_bc // channels
                 i_c = i_bc % channels
 
-                # Allocate shared buffer for kernel elements
-                x_shared = T.alloc_shared((kernel_size, bdim), dtype)
-                x_local = T.alloc_fragment((kernel_size, bdim), dtype)
-
-                # Load all kernel elements into x_shared via T.copy
-                for ki in T.Serial(kernel_size):
-                    in_idx = i_o * stride - padding + ki * dilation
-                    if 0 <= in_idx < in_seq_len:
-                        T.copy(x[i_b, i_c, in_idx], x_shared[ki, 0:bdim])
-
-                T.copy(x_shared, x_local)
-
-                # Reduce sum over kernel dimension (dim=0)
-                # Result is replicated across the bdim dimension
-                acc = T.alloc_fragment((bdim,), accum_dtype)
-                T.reduce_sum(x_local, acc, dim=0)
-
-                # All threads compute the same result (acc values are identical)
-                # Use thread 0 to write the final result
-                result = T.cast(acc[0] / T.cast(kernel_size, accum_dtype), dtype)
-                y[i_b, i_c, i_o] = result
+                # Allocate local accumulator
+                acc = T.alloc_fragment((1,), accum_dtype)
+                if i_o < out_seq_len:
+                    acc[0] = T.cast(0, accum_dtype)
+                    # Sum over kernel window
+                    for ki in T.Serial(kernel_size):
+                        in_idx = i_o * stride - padding + ki * dilation
+                        if 0 <= in_idx < in_seq_len:
+                            val = T.cast(x[i_b, i_c, in_idx], accum_dtype)
+                            acc[0] = acc[0] + val
+                    # Write average
+                    result = T.cast(acc[0] / T.cast(kernel_size, accum_dtype), dtype)
+                    y[i_b, i_c, i_o] = result
 
         return main
 
@@ -210,13 +199,13 @@ class AvgPooling1dKernel(Kernel):
 
     @property
     def default_config(self) -> dict:
-        return {"bdim": 128, "threads": 128}
+        return {"bdim": 1, "threads": 128}
 
     @property
     def autotune_configs(self) -> list[dict]:
-        threads = [32, 64, 128, 256]
-        bdim = [16, 32, 64, 128]
-        return [{"bdim": b, "threads": t} for b in bdim for t in threads]
+        threads = [128, 256]
+        bdims = [1]
+        return [{"bdim": b, "threads": t} for b in bdims for t in threads]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return _avg_pooling_1d_fwd_wrapped(

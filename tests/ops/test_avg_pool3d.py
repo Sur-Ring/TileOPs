@@ -90,12 +90,12 @@ class AvgPooling3dTest(TestBase):
 
     def ref_program(self, x: torch.Tensor) -> torch.Tensor:
         """Reference implementation using torch.nn.functional.avg_pool3d."""
+        # NOTE: PyTorch's avg_pool3d does NOT support dilation.
         y = torch.nn.functional.avg_pool3d(
             x,
             kernel_size=self.kernel_size,
             stride=self.stride,
             padding=self.padding,
-            dilation=self.dilation,
         )
         return y
 
