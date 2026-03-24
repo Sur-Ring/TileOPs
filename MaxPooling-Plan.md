@@ -1,6 +1,6 @@
 # Max Pooling 实现计划
 
-## Operator Description
+## Description
 
 实现 Max Pooling 前向算子，支持 1D、2D 和 3D 输入。
 
@@ -91,7 +91,7 @@ W_out = (W + 2 * pad_w - dilation * (kernel_size_w - 1) - 1) // stride_w + 1
 - `tileops/ops/__init__.py` — **modify**: 导出 MaxPool1dOp, MaxPool2dOp, MaxPool3dOp
 - `tileops/kernels/__init__.py` — **modify**: 导出对应的 Kernel 类
 
-## Implementation Plan
+## Plan
 
 ### Phase 1: 1D MaxPool1d
 
