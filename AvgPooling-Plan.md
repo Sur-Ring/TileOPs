@@ -1,0 +1,129 @@
+---
+type: FEAT
+component: Pooling
+labels: [feat, pooling]
+target_repo: Sur-Ring/TileOPs
+---
+
+# [FEAT][Pooling] Implement Average Pooling (AvgPool) Forward Operator
+
+## Description
+
+### Symptom / Motivation
+The conv & pooling operator family tracking issue #402 requires implementing Average Pooling operators. AvgPool1d/2d/3d forward operators are needed to complement the pooling operator family, similar to PyTorch's `torch.nn.functional.avg_pool1d/2d/3d`.
+
+### Root Cause Analysis
+N/A - new feature implementation
+
+### Related Files
+
+**Reference APIs (PyTorch)**:
+- `torch.nn.functional.avg_pool1d` — input `(N, C, L)`, output `(N, C, L_out)`
+- `torch.nn.functional.avg_pool2d` — input `(N, C, H, W)`, output `(N, C, H_out, W_out)`
+- `torch.nn.functional.avg_pool3d` — input `(N, C, D, H, W)`, output `(N, C, D_out, H_out, W_out)`
+
+**Reference implementation pattern**:
+- `tileops/kernels/deepseek_nsa/mean_pooling_fwd.py` — TileLang kernel + torch.library.custom_op pattern
+- `tileops/kernels/kernel.py` — Kernel base class
+
+**Files to create**:
+- `tileops/kernels/pooling/avg_pool1d.py` — **new**: AvgPool1d Kernel
+- `tileops/kernels/pooling/avg_pool2d.py` — **new**: AvgPool2d Kernel
+- `tileops/kernels/pooling/avg_pool3d.py` — **new**: AvgPool3d Kernel
+- `tileops/ops/pooling/avg_pool1d.py` — **new**: AvgPool1d Op
+- `tileops/ops/pooling/avg_pool2d.py` — **new**: AvgPool2d Op
+- `tileops/ops/pooling/avg_pool3d.py` — **new**: AvgPool3d Op
+- `tests/ops/test_avg_pool1d.py` — **new**: AvgPool1d tests
+- `tests/ops/test_avg_pool2d.py` — **new**: AvgPool2d tests
+- `tests/ops/test_avg_pool3d.py` — **new**: AvgPool3d tests
+- `benchmarks/ops/bench_avg_pool1d.py` — **new**: AvgPool1d benchmarks
+- `benchmarks/ops/bench_avg_pool2d.py` — **new**: AvgPool2d benchmarks
+- `benchmarks/ops/bench_avg_pool3d.py` — **new**: AvgPool3d benchmarks
+
+## Goal
+
+Implement AvgPool1d, AvgPool2d, and AvgPool3d forward operators with standard pooling semantics (kernel_size, stride, padding, dilation), TileLang-based kernels, and PyTorch reference validation.
+
+## Plan
+
+**Plan type: proposal**
+
+### Phase 1: AvgPool1d
+
+1. **Kernel**: Create `tileops/kernels/pooling/avg_pool1d.py` implementing `AvgPooling1dFwdKernel`
+   - Input: `(N, C, L)`, Output: `(N, C, L_out)`
+   - Formula: `L_out = (L + 2*padding - dilation*(kernel_size-1) - 1) // stride + 1`
+   - Use `tilelang.jit` decorator and `torch.library.custom_op`
+   - Replace max reduction in max_pool1d with sum + divide (mean) reduction
+
+2. **Op**: Create `tileops/ops/pooling/avg_pool1d.py` implementing `AvgPooling1dOp`
+
+3. **Tests**: Create `tests/ops/test_avg_pool1d.py`
+   - FP16 (rtol=1e-3, atol=1e-3)
+   - BF16 (rtol=1.6e-2, atol=1.6e-2)
+   - Reference: `torch.nn.functional.avg_pool1d`
+
+4. **Benchmarks**: Create `benchmarks/ops/bench_avg_pool1d.py`
+   - Report latency, TFLOPS, DRAM bandwidth
+   - Compare against `torch` baseline
+
+### Phase 2: AvgPool2d
+
+1. **Kernel**: Create `tileops/kernels/pooling/avg_pool2d.py` implementing `AvgPooling2dFwdKernel`
+   - Input: `(N, C, H, W)`, Output: `(N, C, H_out, W_out)`
+   - Use `tilelang.jit` decorator and `torch.library.custom_op`
+
+2. **Op**: Create `tileops/ops/pooling/avg_pool2d.py` implementing `AvgPooling2dOp`
+
+3. **Tests**: Create `tests/ops/test_avg_pool2d.py`
+   - Reference: `torch.nn.functional.avg_pool2d`
+
+4. **Benchmarks**: Create `benchmarks/ops/bench_avg_pool2d.py`
+
+### Phase 3: AvgPool3d
+
+1. **Kernel**: Create `tileops/kernels/pooling/avg_pool3d.py` implementing `AvgPooling3dFwdKernel`
+   - Input: `(N, C, D, H, W)`, Output: `(N, C, D_out, H_out, W_out)`
+   - Use `tilelang.jit` decorator and `torch.library.custom_op`
+
+2. **Op**: Create `tileops/ops/pooling/avg_pool3d.py` implementing `AvgPooling3dOp`
+
+3. **Tests**: Create `tests/ops/test_avg_pool3d.py`
+   - Reference: `torch.nn.functional.avg_pool3d`
+
+4. **Benchmarks**: Create `benchmarks/ops/bench_avg_pool3d.py`
+
+### Package Updates
+
+- Update `tileops/ops/pooling/__init__.py` to export `AvgPooling1dOp`, `AvgPooling2dOp`, `AvgPooling3dOp`
+- Update `tileops/ops/__init__.py` to export the new AvgPool ops
+- Update `tileops/kernels/pooling/__init__.py` to export the new Kernel classes
+
+## Constraints
+
+- Must follow L1 Kernel → L2 Op architecture pattern
+- Must not change any existing public APIs or break existing tests
+- Kernels must be written in TileLang
+- CUDA only; CPU support is out of scope
+- Must pass existing linting and code style checks
+
+## Acceptance Criteria
+
+### AvgPool1d
+- [ ] AC-1: AvgPooling1dFwdKernel implemented in `tileops/kernels/pooling/avg_pool1d.py`
+- [ ] AC-2: AvgPooling1dOp implemented in `tileops/ops/pooling/avg_pool1d.py` and exported
+- [ ] AC-3: `tests/ops/test_avg_pool1d.py` passes with PyTorch reference validation
+
+### AvgPool2d
+- [ ] AC-4: AvgPooling2dFwdKernel implemented in `tileops/kernels/pooling/avg_pool2d.py`
+- [ ] AC-5: AvgPooling2dOp implemented in `tileops/ops/pooling/avg_pool2d.py` and exported
+- [ ] AC-6: `tests/ops/test_avg_pool2d.py` passes with PyTorch reference validation
+
+### AvgPool3d
+- [ ] AC-7: AvgPooling3dFwdKernel implemented in `tileops/kernels/pooling/avg_pool3d.py`
+- [ ] AC-8: AvgPooling3dOp implemented in `tileops/ops/pooling/avg_pool3d.py` and exported
+- [ ] AC-9: `tests/ops/test_avg_pool3d.py` passes with PyTorch reference validation
+
+### Benchmarks
+- [ ] AC-10: All three operators report latency, TFLOPS, DRAM bandwidth in benchmarks
+- [ ] AC-11: Benchmarks compare against `torch` baseline
