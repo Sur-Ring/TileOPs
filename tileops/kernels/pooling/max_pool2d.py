@@ -49,33 +49,30 @@ def _max_pooling_2d_fwd_kernel(
             y: T.Tensor((batch, channels, out_h, out_w), dtype),
         ) -> None:
             with T.Kernel(
-                batch, channels, out_h*out_w,
-                threads=threads) as (i_b, i_c, i_hw):
-                i_h = i_hw // out_w
-                i_w = i_hw % out_w
+                batch * channels, out_h, out_w,
+                threads=threads) as (i_bc, i_y_h, i_y_w):
+                i_b = i_bc // channels
+                i_c = i_bc % channels
 
-                # load data [chunk_size, D]
+                # Load entire input channel into shared memory
                 x_shared = T.alloc_shared((in_h, in_w), dtype)
-
                 T.clear(x_shared)
-                T.copy(x[i_b, i_c, :, :],
-                       x_shared[:, :])
-                
-                output_local = T.alloc_fragment((out_h,out_w), dtype)
+                T.copy(x[i_b, i_c, :, :], x_shared[:, :])
+
                 x_local = T.alloc_fragment((in_h, in_w), dtype)
                 T.copy(x_shared, x_local)
 
-                for i_y_h in T.Parallel(1, out_h):
-                    start_h = i_y_h-padding_h
-                    for i_y_w in T.Parallel(1, out_w):
-                        start_w = i_y_w-padding_w
-                        max_val = T.alloc_var(dtype)
-                        max_val = x_local[i_y_h, i_y_w]
-                        for i_k_h in T.Serial(start_h, start_h+kernel_h):
-                            for i_k_w in T.Serial(start_w, start_w+kernel_w):
-                                max_val = T.max(max_val, x_local[i_k_h, i_k_w])
-            
-                        y[i_b,i_c,i_y_h,i_y_w] = max_val
+                # Compute max over kernel window
+                max_val = T.alloc_var(dtype)
+                max_val = T.cast(-float("inf"), dtype)
+                for i_k_h in T.Serial(kernel_h):
+                    for i_k_w in T.Serial(kernel_w):
+                        h_idx = i_y_h * stride_h - padding_h + i_k_h * dilation_h
+                        w_idx = i_y_w * stride_w - padding_w + i_k_w * dilation_w
+                        if 0 <= h_idx < in_h and 0 <= w_idx < in_w:
+                            max_val = T.max(max_val, x_local[h_idx, w_idx])
+
+                y[i_b, i_c, i_y_h, i_y_w] = max_val
 
         return main
 
