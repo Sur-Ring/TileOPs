@@ -39,6 +39,8 @@ def _max_pooling_2d_fwd_kernel(
     dilation_w: int,
     dtype: str,
 ) -> Callable:
+    ks = kernel_h * kernel_w
+
     @tilelang.jit(out_idx=[1])
     def _func(threads: int) -> None:
         @T.prim_func
@@ -46,29 +48,34 @@ def _max_pooling_2d_fwd_kernel(
             x: T.Tensor((batch, channels, in_h, in_w), dtype),
             y: T.Tensor((batch, channels, out_h, out_w), dtype),
         ) -> None:
-            with T.Kernel(batch * channels * out_h * out_w, threads=threads) as (pid):
-                # Compute b, c, h, w from linear pid
-                temp = T.alloc_var(T.int32)
-                w = pid % out_w
-                temp = pid // out_w
-                h = temp % out_h
-                temp = temp // out_h
-                c = temp % channels
-                b = temp // channels
+            with T.Kernel(
+                batch, channels, out_h*out_w,
+                threads=threads) as (i_b, i_c, i_hw):
+                i_h = i_hw // out_w
+                i_w = i_hw % out_w
 
-                # Compute max over kernel window
-                max_val = T.alloc_var(dtype)
-                max_val = T.cast(-float("inf"), dtype)
-                for k in T.Serial(kernel_h * kernel_w):
-                    khi = k // kernel_w
-                    kwi = k % kernel_w
-                    h_idx = h * stride_h - padding_h + khi * dilation_h
-                    w_idx = w * stride_w - padding_w + kwi * dilation_w
-                    if 0 <= h_idx < in_h and 0 <= w_idx < in_w:
-                        val = x[b, c, h_idx, w_idx]
-                        max_val = T.max(max_val, val)
+                # load data [chunk_size, D]
+                x_shared = T.alloc_shared((in_h, in_w), dtype)
 
-                y[b, c, h, w] = max_val
+                T.clear(x_shared)
+                T.copy(x[i_b, i_c, :, :],
+                       x_shared[:, :])
+                
+                output_local = T.alloc_fragment((out_h,out_w), dtype)
+                x_local = T.alloc_fragment((in_h, in_w), dtype)
+                T.copy(x_shared, x_local)
+
+                for i_y_h in T.Parallel(1, out_h):
+                    start_h = i_y_h-padding_h
+                    for i_y_w in T.Parallel(1, out_w):
+                        start_w = i_y_w-padding_w
+                        max_val = T.alloc_var(dtype)
+                        max_val = x_local[i_y_h, i_y_w]
+                        for i_k_h in T.Serial(start_h, start_h+kernel_h):
+                            for i_k_w in T.Serial(start_w, start_w+kernel_w):
+                                max_val = T.max(max_val, x_local[i_k_h, i_k_w])
+            
+                        y[i_b,i_c,i_y_h,i_y_w] = max_val
 
         return main
 
@@ -255,7 +262,7 @@ class MaxPooling2dFwdKernel(Kernel):
 
     @property
     def autotune_configs(self) -> list[dict]:
-        threads_list = [64, 128, 256, 512]
+        threads_list = [32, 64, 128, 256, 512, 768, 1024]
         return [{"threads": t} for t in threads_list]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
