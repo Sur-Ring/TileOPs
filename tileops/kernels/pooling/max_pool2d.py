@@ -40,35 +40,49 @@ def _max_pooling_2d_fwd_kernel(
     dtype: str,
 ) -> Callable:
     @tilelang.jit(out_idx=[1])
-    def _func(threads: int) -> None:
+    def _func(block_ow: int, threads: int) -> None:
         @T.prim_func
         def main(
             x: T.Tensor((batch, channels, in_h, in_w), dtype),
             y: T.Tensor((batch, channels, out_h, out_w), dtype),
         ) -> None:
-            with T.Kernel(batch * channels * out_h * out_w, threads=threads) as (pid):
-                # Compute b, c, h, w from linear pid
-                temp = T.alloc_var(T.int32)
-                w = pid % out_w
-                temp = pid // out_w
-                h = temp % out_h
-                temp = temp // out_h
-                c = temp % channels
-                b = temp // channels
+            # 2D grid: (batch * channels * out_h, ceildiv(out_w, block_ow))
+            # Each block processes block_ow consecutive out_w positions for one (b, c, oh).
+            # Thread utilization: block_ow / threads ≈ (threads-1)/threads ≈ 100%
+            # (no shared memory; each thread independently traverses kernel window in registers)
+            with T.Kernel(
+                batch * channels * out_h,
+                T.ceildiv(out_w, block_ow),
+                threads=threads,
+            ) as (pid_bch, pid_ow_blk):
+                # Decode (b, c, oh) from pid_bch
+                b = pid_bch // (channels * out_h)
+                temp = pid_bch % (channels * out_h)
+                c = temp // out_h
+                pid_oh = temp % out_h
+                ow_start = pid_ow_blk * block_ow
 
-                # Compute max over kernel window
-                max_val = T.alloc_var(dtype)
-                max_val = T.cast(-float("inf"), dtype)
-                for k in T.Serial(kernel_h * kernel_w):
-                    khi = k // kernel_w
-                    kwi = k % kernel_w
-                    h_idx = h * stride_h - padding_h + khi * dilation_h
-                    w_idx = w * stride_w - padding_w + kwi * dilation_w
-                    if 0 <= h_idx < in_h and 0 <= w_idx < in_w:
-                        val = x[b, c, h_idx, w_idx]
-                        max_val = T.max(max_val, val)
+                # Each thread independently accumulates max in a register fragment.
+                # Serial kernel-window traversal avoids shared memory entirely.
+                out_local = T.alloc_fragment((block_ow,), dtype)
 
-                y[b, c, h, w] = max_val
+                for i in T.Parallel(block_ow):
+                    out_local[i] = T.cast(-float("inf"), dtype)
+
+                for kh_idx in T.Serial(kernel_h):
+                    for kw_idx in T.Serial(kernel_w):
+                        for i in T.Parallel(block_ow):
+                            ow = ow_start + i
+                            h_idx = pid_oh * stride_h - padding_h + kh_idx * dilation_h
+                            w_idx = ow * stride_w - padding_w + kw_idx * dilation_w
+                            if ow < out_w and 0 <= h_idx < in_h and 0 <= w_idx < in_w:
+                                out_local[i] = T.max(out_local[i], x[b, c, h_idx, w_idx])
+
+                # Write results to global memory (one pass, boundary-guarded)
+                for i in T.Parallel(block_ow):
+                    ow = ow_start + i
+                    if ow < out_w:
+                        y[b, c, pid_oh, ow] = out_local[i]
 
         return main
 
@@ -92,6 +106,7 @@ def _max_pooling_2d_fwd_wrapped(
     dilation_h: int,
     dilation_w: int,
     dtype_str: str,
+    block_ow: int,
     threads: int,
     x: torch.Tensor,
 ) -> torch.Tensor:
@@ -111,7 +126,7 @@ def _max_pooling_2d_fwd_wrapped(
         dilation_h,
         dilation_w,
         dtype_str,
-    )(threads)(x)
+    )(block_ow, threads)(x)
 
 
 @_max_pooling_2d_fwd_wrapped.register_fake
@@ -131,12 +146,13 @@ def _(
     dilation_h: int,
     dilation_w: int,
     dtype_str: str,
+    block_ow: int,
     threads: int,
     x: torch.Tensor,
 ) -> torch.Tensor:
     _ = (
         in_h, in_w, kernel_h, kernel_w, stride_h, stride_w,
-        padding_h, padding_w, dilation_h, dilation_w, threads, dtype_str
+        padding_h, padding_w, dilation_h, dilation_w, block_ow, threads, dtype_str
     )
     return torch.empty((batch, channels, out_h, out_w), dtype=x.dtype, device=x.device)
 
@@ -248,33 +264,23 @@ class MaxPooling2dFwdKernel(Kernel):
             self.dtype_str,
         )
         self.init_config(config, tune)
+        # Cache the compiled kernel (JIT + config) to avoid per-call compilation overhead.
+        self._compiled = self.kernel(self.config["block_ow"], self.config["threads"])
 
     @property
     def default_config(self) -> dict:
-        return {"threads": 256}
+        # block_ow = threads - 1 maximises thread utilisation (~99.6%).
+        # No shared memory means the only constraint is block_ow < threads.
+        return {"block_ow": 255, "threads": 256}
 
     @property
     def autotune_configs(self) -> list[dict]:
-        threads_list = [64, 128, 256, 512]
-        return [{"threads": t} for t in threads_list]
+        configs = []
+        for threads in [64, 128, 256, 512]:
+            for block_ow in [threads - 1, threads // 2, threads // 4]:
+                if block_ow > 0:
+                    configs.append({"block_ow": block_ow, "threads": threads})
+        return configs
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return _max_pooling_2d_fwd_wrapped(
-            self.batch,
-            self.channels,
-            self.in_h,
-            self.in_w,
-            self.out_h,
-            self.out_w,
-            self.kernel_h,
-            self.kernel_w,
-            self.stride_h,
-            self.stride_w,
-            self.padding_h,
-            self.padding_w,
-            self.dilation_h,
-            self.dilation_w,
-            self.dtype_str,
-            self.config["threads"],
-            x,
-        )
+        return self._compiled(x)

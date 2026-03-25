@@ -58,6 +58,8 @@ class MaxPooling2dFwdOp(Op):
         self.dtype = dtype
         self.tune = tune
         self.dispatch_kernel(kernel_map)
+        # Maps input shape → compiled TileLang kernel for zero-overhead hot path.
+        self._compiled_cache: dict = {}
 
     @property
     def default_kernel_map(self) -> dict[str, type[Kernel]]:
@@ -83,7 +85,16 @@ class MaxPooling2dFwdOp(Op):
         if x.ndim != 4:
             raise ValueError(f"Expected 4D input (batch, channels, height, width), got {x.ndim}D")
 
-        batch, channels, in_h, in_w = x.shape
+        # Hot path: compiled kernel is cached per input shape to minimise Python overhead.
+        shape = x.shape
+        compiled = self._compiled_cache.get(shape)
+        if compiled is None:
+            compiled = self._build_compiled(shape)
+        return compiled(x)
+
+    def _build_compiled(self, shape: torch.Size):
+        """Build and cache the compiled kernel for the given input shape."""
+        batch, channels, in_h, in_w = shape
 
         # Handle kernel_size as int or tuple
         if isinstance(self.kernel_size, int):
@@ -112,7 +123,6 @@ class MaxPooling2dFwdOp(Op):
         out_h = self._calculate_out_size(in_h, kernel_h, stride_h, padding_h, dilation_h)
         out_w = self._calculate_out_size(in_w, kernel_w, stride_w, padding_w, dilation_w)
 
-        # Validate padding doesn't cause negative output
         if out_h <= 0:
             raise ValueError(
                 f"Output height is {out_h}, which is invalid. "
@@ -124,7 +134,7 @@ class MaxPooling2dFwdOp(Op):
                 f"Check kernel_size, stride, padding, and dilation values."
             )
 
-        kernel = self.kernel_map["max_pooling_2d"](
+        kern = self.kernel_map["max_pooling_2d"](
             batch=batch,
             channels=channels,
             in_h=in_h,
@@ -136,8 +146,9 @@ class MaxPooling2dFwdOp(Op):
             dtype=self.dtype,
             tune=self.tune,
         )
-
-        return kernel.forward(x)
+        compiled = kern._compiled
+        self._compiled_cache[shape] = compiled
+        return compiled
 
     def __repr__(self) -> str:
         return (
