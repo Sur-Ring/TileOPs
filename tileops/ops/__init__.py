@@ -41,6 +41,11 @@ from .norm import (
     RmsNormOp,
 )
 from .op import Op
+from .pooling import MaxPooling1dFwdOp, MaxPooling2dFwdOp, MaxPooling3dFwdOp
+
+from .max_pool1d import MaxPooling1dFwdOp
+from .max_pool2d import MaxPooling2dFwdOp
+from .max_pool3d import MaxPooling3dFwdOp
 
 # --- Reduction ops (uncomment as sub-category PRs land) ---
 from .reduction import (
@@ -113,6 +118,9 @@ __all__ = [
     "ManifoldConstrainedHyperConnectionPostOp",
     "ManifoldConstrainedHyperConnectionPreOp",
     "MeanPoolingForwardOp",
+    "MaxPooling1dFwdOp",
+    "MaxPooling2dFwdOp",
+    "MaxPooling3dFwdOp",
     "MultiHeadAttentionBwdOp",
     "MultiHeadAttentionDecodePagedWithKVCacheOp",
     "MultiHeadAttentionDecodeWithKVCacheOp",
