@@ -55,6 +55,7 @@ from .norm import (
     LayerNormKernel,
     RmsNormKernel,
 )
+from .pooling import MaxPooling1dFwdKernel, MaxPooling2dFwdKernel, MaxPooling3dFwdKernel
 from .rope import (
     RopeLlama31Kernel,
     RopeLongRopeKernel,
@@ -101,6 +102,9 @@ __all__ = [
     "Kernel",
     "LayerNormKernel",
     "MeanPoolingFwdKernel",
+    "MaxPooling1dFwdKernel",
+    "MaxPooling2dFwdKernel",
+    "MaxPooling3dFwdKernel",
     "MhaBwdKernel",
     "MhaBwdWgmmaPipelinedKernel",
     "MhaFwdKernel",

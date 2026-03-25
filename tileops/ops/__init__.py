@@ -41,6 +41,7 @@ from .norm import (
     RmsNormOp,
 )
 from .op import Op
+from .pooling import AvgPooling1dOp, AvgPooling2dOp, AvgPooling3dOp, MaxPooling2dFwdOp
 
 # --- Reduction ops (uncomment as sub-category PRs land) ---
 from .reduction import (
@@ -81,6 +82,9 @@ __all__ = [
     "BinaryOp",
     "AdaLayerNormOp",
     "AdaLayerNormZeroOp",
+    "AvgPooling1dOp",
+    "AvgPooling2dOp",
+    "AvgPooling3dOp",
     "BatchNormBwdOp",
     "BatchNormFwdOp",
     "DeepSeekSparseAttentionDecodeWithKVCacheOp",
@@ -113,6 +117,7 @@ __all__ = [
     "ManifoldConstrainedHyperConnectionPostOp",
     "ManifoldConstrainedHyperConnectionPreOp",
     "MeanPoolingForwardOp",
+    "MaxPooling2dFwdOp",
     "MultiHeadAttentionBwdOp",
     "MultiHeadAttentionDecodePagedWithKVCacheOp",
     "MultiHeadAttentionDecodeWithKVCacheOp",
