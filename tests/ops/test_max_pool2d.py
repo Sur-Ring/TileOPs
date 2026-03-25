@@ -59,6 +59,157 @@ class MaxPooling2dFixture(FixtureBase):
                     1, 4, 32, 32, 3, 1, 1, 2, torch.float16, False,
                     marks=pytest.mark.full,
                 ),
+                # Large channel, small spatial (GPU saturation via channel depth)
+                pytest.param(
+                    1, 512, 56, 56, 2, 2, 0, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 256, 112, 112, 2, 2, 0, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 512, 112, 112, 2, 2, 0, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 256, 56, 56, 3, 1, 1, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 512, 56, 56, 3, 1, 1, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                # Large kernel sizes (k=5,7,9,11,13) with same-padding
+                pytest.param(
+                    1, 32, 224, 224, 5, 1, 2, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 32, 224, 224, 7, 1, 3, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 32, 224, 224, 9, 1, 4, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 32, 224, 224, 11, 1, 5, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 32, 224, 224, 13, 1, 6, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                # Dilation > 1 with various kernel sizes
+                pytest.param(
+                    1, 64, 224, 224, 3, 1, 1, 2, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 64, 224, 224, 5, 1, 2, 2, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                # Large spatial sizes
+                pytest.param(
+                    1, 64, 448, 448, 2, 2, 0, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 64, 448, 448, 3, 2, 1, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                # Batch > 1
+                pytest.param(
+                    4, 32, 112, 112, 2, 2, 0, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                # Nightly: very large spatial sizes
+                pytest.param(
+                    1, 64, 1024, 1024, 2, 2, 0, 1, torch.float16, False,
+                    marks=pytest.mark.nightly,
+                ),
+                pytest.param(
+                    1, 32, 1024, 1024, 7, 1, 3, 1, torch.float16, False,
+                    marks=pytest.mark.nightly,
+                ),
+                pytest.param(
+                    1, 32, 2048, 2048, 2, 2, 0, 1, torch.float16, False,
+                    marks=pytest.mark.nightly,
+                ),
+                pytest.param(
+                    1, 16, 4096, 4096, 2, 2, 0, 1, torch.float16, False,
+                    marks=pytest.mark.nightly,
+                ),
+                pytest.param(
+                    1, 8, 8192, 8192, 2, 2, 0, 1, torch.float16, False,
+                    marks=pytest.mark.nightly,
+                ),
+                # Large kernel sizes (k=5,7,9,11,13) with same-padding
+                pytest.param(
+                    1, 32, 224, 224, 5, 1, 2, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 32, 224, 224, 7, 1, 3, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 32, 224, 224, 9, 1, 4, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 32, 224, 224, 11, 1, 5, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 32, 224, 224, 13, 1, 6, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                # Dilation > 1 with various kernel sizes
+                pytest.param(
+                    1, 64, 224, 224, 3, 1, 1, 2, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 64, 224, 224, 3, 1, 1, 4, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 64, 224, 224, 5, 1, 2, 2, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                # Large spatial sizes
+                pytest.param(
+                    1, 64, 448, 448, 2, 2, 0, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 64, 448, 448, 3, 2, 1, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                # Batch > 1
+                pytest.param(
+                    4, 32, 112, 112, 2, 2, 0, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                # Nightly: very large spatial sizes
+                pytest.param(
+                    1, 64, 1024, 1024, 2, 2, 0, 1, torch.float16, False,
+                    marks=pytest.mark.nightly,
+                ),
+                pytest.param(
+                    1, 32, 2048, 2048, 2, 2, 0, 1, torch.float16, False,
+                    marks=pytest.mark.nightly,
+                ),
+                pytest.param(
+                    1, 16, 4096, 4096, 2, 2, 0, 1, torch.float16, False,
+                    marks=pytest.mark.nightly,
+                ),
+                pytest.param(
+                    1, 8, 8192, 8192, 2, 2, 0, 1, torch.float16, False,
+                    marks=pytest.mark.nightly,
+                ),
             ],
         ),
     ]
