@@ -52,38 +52,26 @@ def _max_pooling_2d_fwd_kernel(
             # Flat 1-D grid: each block processes `threads` output elements.
             # Thread utilisation: (total % threads) / threads ≈ 100 % (only
             # the last block may have a few idle threads).
-            # This eliminates the per-block wasted threads that arose in the
-            # previous 2-D grid when out_w < block_ow.
+            # Single-pass: write directly to y[b,c,oh,ow] inside the Serial
+            # loop, eliminating the intermediate fragment and the second
+            # T.Parallel write-back pass.  This halves index decomposition
+            # cost and reduces register pressure, which improves occupancy
+            # for high-channel configurations.
             with T.Kernel(T.ceildiv(total, threads), threads=threads) as pid:
-                out_local = T.alloc_fragment((threads,), dtype)
-
-                # Each thread independently accumulates its own max in registers.
-                # T.Serial inside T.Parallel: the outer Parallel maps to GPU
-                # threads; each thread runs the kernel-window loop sequentially.
                 for i in T.Parallel(threads):
                     lin = pid * threads + i
-                    out_local[i] = T.cast(-float("inf"), dtype)
                     if lin < total:
                         ow = lin % out_w
                         oh = (lin // out_w) % out_h
                         c  = (lin // (out_w * out_h)) % channels
                         b  = lin // (out_w * out_h * channels)
+                        y[b, c, oh, ow] = T.cast(-float("inf"), dtype)
                         for kh in T.Serial(kernel_h):
                             for kw in T.Serial(kernel_w):
                                 h_idx = oh * stride_h - padding_h + kh * dilation_h
                                 w_idx = ow * stride_w - padding_w + kw * dilation_w
                                 if 0 <= h_idx < in_h and 0 <= w_idx < in_w:
-                                    out_local[i] = T.max(out_local[i], x[b, c, h_idx, w_idx])
-
-                # Write results back to global memory.
-                for i in T.Parallel(threads):
-                    lin = pid * threads + i
-                    if lin < total:
-                        ow = lin % out_w
-                        oh = (lin // out_w) % out_h
-                        c  = (lin // (out_w * out_h)) % channels
-                        b  = lin // (out_w * out_h * channels)
-                        y[b, c, oh, ow] = out_local[i]
+                                    y[b, c, oh, ow] = T.max(y[b, c, oh, ow], x[b, c, h_idx, w_idx])
 
         return main
 
