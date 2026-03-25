@@ -30,6 +30,16 @@ class MaxPooling2dFixture(FixtureBase):
                 # Full tests
                 # ------------------------------------------------------------------
 
+                # ResNet stem max-pool: k=3, s=2, p=1
+                pytest.param(
+                    1, 64, 112, 112, 3, 2, 1, 1, torch.float16, False,
+                    marks=pytest.mark.full,
+                ),
+                pytest.param(
+                    1, 64, 112, 112, 3, 2, 1, 1, torch.bfloat16, False,
+                    marks=pytest.mark.full,
+                ),
+
                 # AC baseline shapes (224/112/56) — fp16 and bf16
                 pytest.param(
                     1, 64, 224, 224, 2, 2, 0, 1, torch.float16, False,

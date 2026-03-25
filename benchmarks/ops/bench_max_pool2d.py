@@ -47,6 +47,14 @@ def _out(length: int, kernel_size: int, stride: int, padding: int, dilation: int
 
 _MAX_POOL2D_BENCH_PARAMS = [
     # -----------------------------------------------------------------------
+    # ResNet stem max-pool: k=3, s=2, p=1, (B,64,112,112) → (B,64,56,56)
+    # Only max-pool in standard ResNet-18/34/50/101/152.
+    # -----------------------------------------------------------------------
+    pytest.param(1, 64, 112, 112, 3, 2, 1, 1, torch.float16,  id="resnet-fp16"),
+    pytest.param(1, 64, 112, 112, 3, 2, 1, 1, torch.bfloat16, id="resnet-bf16"),
+    pytest.param(4, 64, 112, 112, 3, 2, 1, 1, torch.float16,  id="resnet-B4-fp16"),
+
+    # -----------------------------------------------------------------------
     # AC baseline shapes (issue #2 acceptance criteria)
     # -----------------------------------------------------------------------
     pytest.param(1, 64, 224, 224, 2, 2, 0, 1, torch.float16,  id="ac-fp16-224x224-k2"),
