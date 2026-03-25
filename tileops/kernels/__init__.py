@@ -47,7 +47,6 @@ from .grouped_gemm import grouped_gemm_kernel
 from .kernel import Kernel
 from .mhc import mhc_post_kernel, mhc_pre_kernel
 from .moe import MoePermuteAlignKernel
-from .pooling import MaxPooling1dFwdKernel, MaxPooling2dFwdKernel, MaxPooling3dFwdKernel
 from .norm import (
     BatchNormBwdKernel,
     BatchNormFwdInferKernel,
@@ -56,6 +55,7 @@ from .norm import (
     LayerNormKernel,
     RmsNormKernel,
 )
+from .pooling import MaxPooling1dFwdKernel, MaxPooling2dFwdKernel, MaxPooling3dFwdKernel
 from .rope import (
     RopeLlama31Kernel,
     RopeLongRopeKernel,

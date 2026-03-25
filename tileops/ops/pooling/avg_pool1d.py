@@ -3,13 +3,12 @@
 Applies average pooling over an input signal composed of several input planes.
 """
 
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 
 from tileops.kernels.kernel import Kernel
 from tileops.kernels.pooling import AvgPooling1dKernel
-
 from tileops.ops.op import Op
 
 __all__ = ["AvgPooling1dOp"]

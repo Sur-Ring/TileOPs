@@ -9,7 +9,6 @@ import torch
 
 from tileops.kernels.kernel import Kernel
 from tileops.kernels.pooling import AvgPooling3dKernel
-
 from tileops.ops.op import Op
 
 __all__ = ["AvgPooling3dOp"]
