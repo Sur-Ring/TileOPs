@@ -44,16 +44,17 @@ make bench        # 运行基准测试
 ```
 
 单测试运行：
+
 ```bash
 PYTHONPATH="$PWD" python -m pytest tests/ops/test_<op_name>.py
 ```
 
 ## 架构：2 层分层
 
-| 层级 | 名称 | 说明 |
-|:---:|:---:|:---|
-| L2 | **Op** | 无状态调度器，兼容 CUDA-Graph 和 torch.compile |
-| L1 | **Kernel** | TileLang 内核，针对特定硬件优化 |
+| 层级 |    名称    | 说明                                           |
+| :--: | :--------: | :--------------------------------------------- |
+|  L2  |   **Op**   | 无状态调度器，兼容 CUDA-Graph 和 torch.compile |
+|  L1  | **Kernel** | TileLang 内核，针对特定硬件优化                |
 
 开发流程：**Kernel (L1) → Op (L2)**，先实现内核，再封装 Op 接口。
 

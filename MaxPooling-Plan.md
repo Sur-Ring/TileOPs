@@ -13,6 +13,7 @@ y[n, s_out, d] = max(x[n, s_out * stride + k, d])  for k in [0, kernel_size)
 ```
 
 其中：
+
 ```
 S_out = (S + 2 * padding - dilation * (kernel_size - 1) - 1) // stride + 1
 ```
@@ -29,6 +30,7 @@ y[n, c, h_out, w_out] = max_{kh, kw} x[n, c, h_out * stride_h + kh - pad_h, w_ou
 ```
 
 其中：
+
 ```
 H_out = (H + 2 * pad_h - dilation * (kernel_size_h - 1) - 1) // stride_h + 1
 W_out = (W + 2 * pad_w - dilation * (kernel_size_w - 1) - 1) // stride_w + 1
@@ -46,6 +48,7 @@ y[n, c, d_out, h_out, w_out] = max_{kd, kh, kw} x[n, c, d_out * stride_d + kd - 
 ```
 
 其中：
+
 ```
 D_out = (D + 2 * pad_d - dilation * (kernel_size_d - 1) - 1) // stride_d + 1
 H_out = (H + 2 * pad_h - dilation * (kernel_size_h - 1) - 1) // stride_h + 1
@@ -55,39 +58,43 @@ W_out = (W + 2 * pad_w - dilation * (kernel_size_w - 1) - 1) // stride_w + 1
 **输入形状：** `(N, C, D, H, W)` = `(batch, channels, depth, height, width)`
 **输出形状：** `(N, C, D_out, H_out, W_out)`
 
----
+______________________________________________________________________
 
 本 issue 跟踪标准 Max Pooling forward 算子，作为 conv & pooling 算子家族的一部分（#402）。
 
 ## Dtype Support Matrix
 
-| Op / API | Input dtypes | Output dtype | PyTorch / reference semantic baseline |
-| -------- | ------------ | ------------ | ------------------------------------ |
-| MaxPool1dOp | fp16, bf16 | same as input | `torch.nn.functional.max_pool1d` |
-| MaxPool2dOp | fp16, bf16 | same as input | `torch.nn.functional.max_pool2d` |
-| MaxPool3dOp | fp16, bf16 | same as input | `torch.nn.functional.max_pool3d` |
+| Op / API    | Input dtypes | Output dtype  | PyTorch / reference semantic baseline |
+| ----------- | ------------ | ------------- | ------------------------------------- |
+| MaxPool1dOp | fp16, bf16   | same as input | `torch.nn.functional.max_pool1d`      |
+| MaxPool2dOp | fp16, bf16   | same as input | `torch.nn.functional.max_pool2d`      |
+| MaxPool3dOp | fp16, bf16   | same as input | `torch.nn.functional.max_pool3d`      |
 
 ## Related Files
 
 ### 1D MaxPool1d
+
 - `tileops/kernels/pooling/max_pool1d.py` — **add**: TileLang kernel 实现
 - `tileops/ops/pooling/max_pool1d.py` — **add**: Op wrapper
 - `tests/ops/test_max_pool1d.py` — **add**: 正确性测试
 - `benchmarks/ops/bench_max_pool1d.py` — **add**: 基准测试
 
 ### 2D MaxPool2d
+
 - `tileops/kernels/pooling/max_pool2d.py` — **add**: TileLang kernel 实现
 - `tileops/ops/pooling/max_pool2d.py` — **add**: Op wrapper
 - `tests/ops/test_max_pool2d.py` — **add**: 正确性测试
 - `benchmarks/ops/bench_max_pool2d.py` — **add**: 基准测试
 
 ### 3D MaxPool3d
+
 - `tileops/kernels/pooling/max_pool3d.py` — **add**: TileLang kernel 实现
 - `tileops/ops/pooling/max_pool3d.py` — **add**: Op wrapper
 - `tests/ops/test_max_pool3d.py` — **add**: 正确性测试
 - `benchmarks/ops/bench_max_pool3d.py` — **add**: 基准测试
 
 ### 包级别导出
+
 - `tileops/ops/__init__.py` — **modify**: 导出 MaxPool1dOp, MaxPool2dOp, MaxPool3dOp
 - `tileops/kernels/__init__.py` — **modify**: 导出对应的 Kernel 类
 
@@ -180,35 +187,39 @@ benchmarks/ops/
 
 ## Goal
 
-| 指标 | 值 |
-| --- | --- |
-| Data types | FP16, BF16 |
-| Maximum relative error (FP16) | 1e-3 |
-| Maximum relative error (BF16) | 1.6e-2 |
-| Maximum absolute error (FP16) | 1e-3 |
-| Maximum absolute error (BF16) | 1.6e-2 |
-| Accuracy reference (1D) | PyTorch `torch.nn.functional.max_pool1d` |
-| Accuracy reference (2D) | PyTorch `torch.nn.functional.max_pool2d` |
-| Accuracy reference (3D) | PyTorch `torch.nn.functional.max_pool3d` |
+| 指标                          | 值                                       |
+| ----------------------------- | ---------------------------------------- |
+| Data types                    | FP16, BF16                               |
+| Maximum relative error (FP16) | 1e-3                                     |
+| Maximum relative error (BF16) | 1.6e-2                                   |
+| Maximum absolute error (FP16) | 1e-3                                     |
+| Maximum absolute error (BF16) | 1.6e-2                                   |
+| Accuracy reference (1D)       | PyTorch `torch.nn.functional.max_pool1d` |
+| Accuracy reference (2D)       | PyTorch `torch.nn.functional.max_pool2d` |
+| Accuracy reference (3D)       | PyTorch `torch.nn.functional.max_pool3d` |
 
 ## Acceptance Criteria
 
 ### 1D MaxPool1d
+
 - [ ] AC-1: MaxPool1dKernel 在 `tileops/kernels/pooling/max_pool1d.py` 中实现
 - [ ] AC-2: MaxPool1dOp 在 `tileops/ops/pooling/max_pool1d.py` 中实现并导出
 - [ ] AC-3: `tests/ops/test_max_pool1d.py` 通过 PyTorch 参考验证
 
 ### 2D MaxPool2d
+
 - [ ] AC-4: MaxPool2dKernel 在 `tileops/kernels/pooling/max_pool2d.py` 中实现
 - [ ] AC-5: MaxPool2dOp 在 `tileops/ops/pooling/max_pool2d.py` 中实现并导出
 - [ ] AC-6: `tests/ops/test_max_pool2d.py` 通过 PyTorch 参考验证
 
 ### 3D MaxPool3d
+
 - [ ] AC-7: MaxPool3dKernel 在 `tileops/kernels/pooling/max_pool3d.py` 中实现
 - [ ] AC-8: MaxPool3dOp 在 `tileops/ops/pooling/max_pool3d.py` 中实现并导出
 - [ ] AC-9: `tests/ops/test_max_pool3d.py` 通过 PyTorch 参考验证
 
 ### Benchmarks
+
 - [ ] AC-10: 所有三个算子的 benchmark 报告 latency, TFLOPS, DRAM bandwidth
 
 ## Constraints
