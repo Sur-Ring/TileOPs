@@ -45,140 +45,44 @@ def _max_pooling_3d_fwd_kernel(
     dilation_w: int,
     dtype: str,
 ) -> Callable:
-    @tilelang.jit(out_idx=[5])
-    def _func(block_bc: int, threads: int) -> None:
+    # Flat total number of output elements processed by the kernel.
+    total = batch * channels * out_d * out_h * out_w
+
+    @tilelang.jit(out_idx=[1])
+    def _func(threads: int) -> None:
         @T.prim_func
         def main(
             x: T.Tensor((batch, channels, in_d, in_h, in_w), dtype),
             y: T.Tensor((batch, channels, out_d, out_h, out_w), dtype),
         ) -> None:
-            with T.Kernel(
-                T.ceildiv(batch * channels, block_bc), out_d, out_h, out_w, threads=threads
-            ) as (pid_bc, pid_d, pid_h, pid_w):
-                bc = pid_bc * block_bc
-                block_size = T.min(block_bc, batch * channels - bc)
-
-                b = bc // channels
-                c = bc % channels
-
-                # Allocate shared and local buffers
-                kd = kernel_d
-                kh = kernel_h
-                kw = kernel_w
-                x_shared = T.alloc_shared((block_size, kd, kh, kw), dtype)
-                x_local = T.alloc_fragment((block_size, kd, kh, kw), dtype)
-                out_local = T.alloc_fragment((block_size,), dtype)
-
-                # Initialize output to very small value
-                for i in T.Parallel(block_size):
-                    out_local[i] = T.cast(-float("inf"), dtype)
-
-                # Load input data for this output position and compute max
-                for kdi, khi, kwi in T.Parallel(kd, kh, kw):
-                    d_idx = pid_d * stride_d - padding_d + kdi * dilation_d
-                    h_idx = pid_h * stride_h - padding_h + khi * dilation_h
-                    w_idx = pid_w * stride_w - padding_w + kwi * dilation_w
-                    if 0 <= d_idx < in_d and 0 <= h_idx < in_h and 0 <= w_idx < in_w:
-                        for i in T.Parallel(block_size):
-                            val = x[b + i, c, d_idx, h_idx, w_idx]
-                            out_local[i] = T.max(out_local[i], val)
-
-                # Store output
-                for i in T.Parallel(block_size):
-                    y[b + i, c, pid_d, pid_h, pid_w] = out_local[i]
+            # Flat 1-D grid: each block processes `threads` output elements.
+            # Single-pass: write directly to y[b, c, od, oh, ow] inside the
+            # Serial loops, eliminating intermediate fragments and second-pass
+            # write-back. This reduces register pressure and improves occupancy.
+            with T.Kernel(T.ceildiv(total, threads), threads=threads) as pid:
+                for i in T.Parallel(threads):
+                    lin = pid * threads + i
+                    if lin < total:
+                        ow = lin % out_w
+                        oh = (lin // out_w) % out_h
+                        od = (lin // (out_w * out_h)) % out_d
+                        c  = (lin // (out_w * out_h * out_d)) % channels
+                        b  = lin // (out_w * out_h * out_d * channels)
+                        y[b, c, od, oh, ow] = T.cast(-float("inf"), dtype)
+                        for kd in T.Serial(kernel_d):
+                            for kh in T.Serial(kernel_h):
+                                for kw in T.Serial(kernel_w):
+                                    d_idx = od * stride_d - padding_d + kd * dilation_d
+                                    h_idx = oh * stride_h - padding_h + kh * dilation_h
+                                    w_idx = ow * stride_w - padding_w + kw * dilation_w
+                                    if 0 <= d_idx < in_d and 0 <= h_idx < in_h and 0 <= w_idx < in_w:
+                                        y[b, c, od, oh, ow] = T.max(
+                                            y[b, c, od, oh, ow], x[b, c, d_idx, h_idx, w_idx]
+                                        )
 
         return main
 
     return _func
-
-
-@torch.library.custom_op("top::max_pooling_3d_fwd", mutates_args=())
-def _max_pooling_3d_fwd_wrapped(
-    batch: int,
-    channels: int,
-    in_d: int,
-    in_h: int,
-    in_w: int,
-    out_d: int,
-    out_h: int,
-    out_w: int,
-    kernel_d: int,
-    kernel_h: int,
-    kernel_w: int,
-    stride_d: int,
-    stride_h: int,
-    stride_w: int,
-    padding_d: int,
-    padding_h: int,
-    padding_w: int,
-    dilation_d: int,
-    dilation_h: int,
-    dilation_w: int,
-    dtype_str: str,
-    block_bc: int,
-    threads: int,
-    x: torch.Tensor,
-) -> torch.Tensor:
-    return _max_pooling_3d_fwd_kernel(
-        batch,
-        channels,
-        in_d,
-        in_h,
-        in_w,
-        out_d,
-        out_h,
-        out_w,
-        kernel_d,
-        kernel_h,
-        kernel_w,
-        stride_d,
-        stride_h,
-        stride_w,
-        padding_d,
-        padding_h,
-        padding_w,
-        dilation_d,
-        dilation_h,
-        dilation_w,
-        dtype_str,
-    )(block_bc, threads)(x)
-
-
-@_max_pooling_3d_fwd_wrapped.register_fake
-def _(
-    batch: int,
-    channels: int,
-    in_d: int,
-    in_h: int,
-    in_w: int,
-    out_d: int,
-    out_h: int,
-    out_w: int,
-    kernel_d: int,
-    kernel_h: int,
-    kernel_w: int,
-    stride_d: int,
-    stride_h: int,
-    stride_w: int,
-    padding_d: int,
-    padding_h: int,
-    padding_w: int,
-    dilation_d: int,
-    dilation_h: int,
-    dilation_w: int,
-    dtype_str: str,
-    block_bc: int,
-    threads: int,
-    x: torch.Tensor,
-) -> torch.Tensor:
-    _ = (
-        in_d, in_h, in_w, kernel_d, kernel_h, kernel_w,
-        stride_d, stride_h, stride_w,
-        padding_d, padding_h, padding_w,
-        dilation_d, dilation_h, dilation_w,
-        block_bc, threads, dtype_str
-    )
-    return torch.empty((batch, channels, out_d, out_h, out_w), dtype=x.dtype, device=x.device)
 
 
 class MaxPooling3dFwdKernel(Kernel):
@@ -307,41 +211,16 @@ class MaxPooling3dFwdKernel(Kernel):
             self.dtype_str,
         )
         self.init_config(config, tune)
+        # Cache the compiled kernel to avoid per-call JIT dispatch overhead.
+        self._compiled = self.kernel(self.config["threads"])
 
     @property
     def default_config(self) -> dict:
-        return {"block_bc": 1, "threads": 128}
+        return {"threads": 256}
 
     @property
     def autotune_configs(self) -> list[dict]:
-        block_bcs = [1, 2, 4]
-        threads_list = [64, 128, 256]
-        return [{"block_bc": bb, "threads": t} for bb in block_bcs for t in threads_list]
+        return [{"threads": t} for t in [64, 128, 256, 512]]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return _max_pooling_3d_fwd_wrapped(
-            self.batch,
-            self.channels,
-            self.in_d,
-            self.in_h,
-            self.in_w,
-            self.out_d,
-            self.out_h,
-            self.out_w,
-            self.kernel_d,
-            self.kernel_h,
-            self.kernel_w,
-            self.stride_d,
-            self.stride_h,
-            self.stride_w,
-            self.padding_d,
-            self.padding_h,
-            self.padding_w,
-            self.dilation_d,
-            self.dilation_h,
-            self.dilation_w,
-            self.dtype_str,
-            self.config["block_bc"],
-            self.config["threads"],
-            x,
-        )
+        return self._compiled(x)

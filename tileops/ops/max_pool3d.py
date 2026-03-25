@@ -1,9 +1,9 @@
-"""Max Pooling 2D Forward Op.
+"""Max Pooling 3D Forward Op.
 
 Applies max pooling over an input signal composed of several input planes.
 
 torch.compile support:
-- MaxPooling2dFwdOp is registered via @torch.library.custom_op at module load time.
+- MaxPooling3dFwdOp is registered via @torch.library.custom_op at module load time.
 - Instances are looked up at runtime via _OP_REGISTRY keyed by id(instance).
 - The instance key is a plain int so dynamo can trace through forward() without
   hitting unsupported Python side-effects.
@@ -16,10 +16,10 @@ from typing import List, Optional, Union
 import torch
 
 from tileops.kernels.kernel import Kernel
-from tileops.kernels.pooling import MaxPooling2dFwdKernel
+from tileops.kernels.pooling import MaxPooling3dFwdKernel
 from tileops.ops.op import Op
 
-__all__ = ["MaxPooling2dFwdOp"]
+__all__ = ["MaxPooling3dFwdOp"]
 
 _OP_REGISTRY: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
 
@@ -29,6 +29,7 @@ def _get_compiled(
     kernel_cls,
     batch: int,
     channels: int,
+    in_d: int,
     in_h: int,
     in_w: int,
     kernel_size,
@@ -42,6 +43,7 @@ def _get_compiled(
     kern = kernel_cls(
         batch=batch,
         channels=channels,
+        in_d=in_d,
         in_h=in_h,
         in_w=in_w,
         kernel_size=kernel_size,
@@ -54,10 +56,10 @@ def _get_compiled(
     return kern._compiled
 
 
-def _register_max_pooling_2d_fwd_custom_op(op_cls) -> None:
-    """Register MaxPooling2dFwdOp for torch.compile."""
+def _register_max_pooling_3d_fwd_custom_op(op_cls) -> None:
+    """Register MaxPooling3dFwdOp for torch.compile."""
 
-    @torch.library.custom_op("top::pooling_max2d_fwd", mutates_args=())
+    @torch.library.custom_op("top::pooling_max3d_fwd", mutates_args=())
     def _wrapped(x: torch.Tensor, _out_shape: List[int], instance_key: int) -> torch.Tensor:
         instance = _OP_REGISTRY[instance_key]
         return instance._eager_forward(x)
@@ -69,40 +71,40 @@ def _register_max_pooling_2d_fwd_custom_op(op_cls) -> None:
     op_cls._wrapped = _wrapped
 
 
-class MaxPooling2dFwdOp(Op):
-    """Max Pooling 2D Forward Operator.
+class MaxPooling3dFwdOp(Op):
+    """Max Pooling 3D Forward Operator.
 
     Applies max pooling over an input signal composed of several input planes.
 
     Args:
-        kernel_size: Size of the pooling window. Can be an int for square kernel
-            or (kernel_h, kernel_w) for rectangular kernel.
+        kernel_size: Size of the pooling window. Can be an int for cubic kernel
+            or (kernel_d, kernel_h, kernel_w) for non-cubic kernel.
         stride: Stride of the pooling window. If None, defaults to kernel_size.
-            Can be an int or (stride_h, stride_w).
+            Can be an int or (stride_d, stride_h, stride_w).
         padding: Padding added to input. If None, defaults to 0.
-            Can be an int or (pad_h, pad_w).
+            Can be an int or (pad_d, pad_h, pad_w).
         dilation: Dilation of the pooling window. If None, defaults to 1.
-            Can be an int or (dilation_h, dilation_w).
+            Can be an int or (dilation_d, dilation_h, dilation_w).
         dtype: Data type (float16 or bfloat16).
         kernel_map: Optional dict mapping kernel names to Kernel classes.
         tune: Whether to run autotuning.
 
     Example:
-        >>> op = MaxPooling2dFwdOp(kernel_size=2, stride=2)
-        >>> x = torch.randn(1, 3, 224, 224, dtype=torch.float16, device="cuda")
+        >>> op = MaxPooling3dFwdOp(kernel_size=2, stride=2)
+        >>> x = torch.randn(1, 3, 16, 16, 16, dtype=torch.float16, device="cuda")
         >>> y = op(x)
         >>> y.shape
-        torch.Size([1, 3, 112, 112])
+        torch.Size([1, 3, 8, 8, 8])
     """
 
-    _wrapped = None  # Set by _register_max_pooling_2d_fwd_custom_op at class definition
+    _wrapped = None  # Set by _register_max_pooling_3d_fwd_custom_op at class definition
 
     def __init__(
         self,
-        kernel_size: Union[int, tuple[int, int]],
-        stride: Optional[Union[int, tuple[int, int]]] = None,
-        padding: Optional[Union[int, tuple[int, int]]] = None,
-        dilation: Optional[Union[int, tuple[int, int]]] = None,
+        kernel_size: Union[int, tuple[int, int, int]],
+        stride: Optional[Union[int, tuple[int, int, int]]] = None,
+        padding: Optional[Union[int, tuple[int, int, int]]] = None,
+        dilation: Optional[Union[int, tuple[int, int, int]]] = None,
         dtype: torch.dtype = torch.float16,
         kernel_map: Optional[dict[str, type[Kernel]]] = None,
         tune: bool = False,
@@ -120,72 +122,75 @@ class MaxPooling2dFwdOp(Op):
 
     @property
     def default_kernel_map(self) -> dict[str, type[Kernel]]:
-        return {"max_pooling_2d": MaxPooling2dFwdKernel}
+        return {"max_pooling_3d": MaxPooling3dFwdKernel}
 
     def _calculate_out_size(self, length: int, kernel_size: int, stride: int, padding: int, dilation: int) -> int:
         """Calculate output size for pooling."""
         return (length + 2 * padding - dilation * (kernel_size - 1) - 1) // stride + 1
 
-    def _unpack_params(self, in_h: int, in_w: int):
-        """Return (out_h, out_w) given input spatial dims."""
+    def _unpack_params(self, in_d: int, in_h: int, in_w: int):
+        """Return (out_d, out_h, out_w) given input spatial dims."""
         if isinstance(self.kernel_size, int):
-            kernel_h = kernel_w = self.kernel_size
+            kd = kh = kw = self.kernel_size
         else:
-            kernel_h, kernel_w = self.kernel_size
+            kd, kh, kw = self.kernel_size
         if isinstance(self.stride, int):
-            stride_h = stride_w = self.stride
+            sd = sh = sw = self.stride
         else:
-            stride_h, stride_w = self.stride
+            sd, sh, sw = self.stride
         if isinstance(self.padding, int):
-            padding_h = padding_w = self.padding
+            pd = ph = pw = self.padding
         else:
-            padding_h, padding_w = self.padding
+            pd, ph, pw = self.padding
         if isinstance(self.dilation, int):
-            dilation_h = dilation_w = self.dilation
+            dd = dh = dw = self.dilation
         else:
-            dilation_h, dilation_w = self.dilation
-        out_h = self._calculate_out_size(in_h, kernel_h, stride_h, padding_h, dilation_h)
-        out_w = self._calculate_out_size(in_w, kernel_w, stride_w, padding_w, dilation_w)
-        return out_h, out_w
+            dd, dh, dw = self.dilation
+        out_d = self._calculate_out_size(in_d, kd, sd, pd, dd)
+        out_h = self._calculate_out_size(in_h, kh, sh, ph, dh)
+        out_w = self._calculate_out_size(in_w, kw, sw, pw, dw)
+        return out_d, out_h, out_w
 
     def _eager_forward(self, x: torch.Tensor) -> torch.Tensor:
         """Direct kernel dispatch, bypassing validation. Called from custom_op and eager path."""
-        batch, channels, in_h, in_w = x.shape
+        batch, channels, in_d, in_h, in_w = x.shape
         compiled = _get_compiled(
-            self.kernel_map["max_pooling_2d"],
-            batch, channels, in_h, in_w,
+            self.kernel_map["max_pooling_3d"],
+            batch, channels, in_d, in_h, in_w,
             self.kernel_size, self.stride, self.padding, self.dilation,
             self.dtype, self.tune,
         )
         return compiled(x)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass of max pooling 2D.
+        """Forward pass of max pooling 3D.
 
         Args:
-            x: Input tensor of shape (batch, channels, height, width).
+            x: Input tensor of shape (batch, channels, depth, height, width).
 
         Returns:
-            Output tensor of shape (batch, channels, out_h, out_w).
+            Output tensor of shape (batch, channels, out_d, out_h, out_w).
         """
         if not x.is_cuda:
             raise ValueError("x must be a CUDA tensor")
         if x.dtype != self.dtype:
             raise ValueError(f"Expected x.dtype {self.dtype}, got {x.dtype}")
-        if x.ndim != 4:
-            raise ValueError(f"Expected 4D input (batch, channels, height, width), got {x.ndim}D")
+        if x.ndim != 5:
+            raise ValueError(f"Expected 5D input (batch, channels, depth, height, width), got {x.ndim}D")
 
         if torch.compiler.is_compiling():
-            batch, channels, in_h, in_w = x.shape
-            out_h, out_w = self._unpack_params(in_h, in_w)
-            return type(self)._wrapped(x, [batch, channels, out_h, out_w], self._instance_key)
+            batch, channels, in_d, in_h, in_w = x.shape
+            out_d, out_h, out_w = self._unpack_params(in_d, in_h, in_w)
+            return type(self)._wrapped(
+                x, [batch, channels, out_d, out_h, out_w], self._instance_key
+            )
         return self._eager_forward(x)
 
     def __repr__(self) -> str:
         return (
-            f"MaxPooling2dFwdOp(kernel_size={self.kernel_size}, stride={self.stride}, "
+            f"MaxPooling3dFwdOp(kernel_size={self.kernel_size}, stride={self.stride}, "
             f"padding={self.padding}, dilation={self.dilation}, dtype={self.dtype})"
         )
 
 
-_register_max_pooling_2d_fwd_custom_op(MaxPooling2dFwdOp)
+_register_max_pooling_3d_fwd_custom_op(MaxPooling3dFwdOp)

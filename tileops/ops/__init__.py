@@ -28,7 +28,9 @@ from .mha_decode_paged import MultiHeadAttentionDecodePagedWithKVCacheOp
 from .mhc_post import ManifoldConstrainedHyperConnectionPostOp
 from .mhc_pre import ManifoldConstrainedHyperConnectionPreOp
 from .moe import MoePermuteAlignOp
-from .pooling import MaxPooling2dFwdOp
+from .max_pool1d import MaxPooling1dFwdOp
+from .max_pool2d import MaxPooling2dFwdOp
+from .max_pool3d import MaxPooling3dFwdOp
 from .norm import (
     AdaLayerNormOp,
     AdaLayerNormZeroOp,
@@ -114,7 +116,9 @@ __all__ = [
     "ManifoldConstrainedHyperConnectionPostOp",
     "ManifoldConstrainedHyperConnectionPreOp",
     "MeanPoolingForwardOp",
+    "MaxPooling1dFwdOp",
     "MaxPooling2dFwdOp",
+    "MaxPooling3dFwdOp",
     "MultiHeadAttentionBwdOp",
     "MultiHeadAttentionDecodePagedWithKVCacheOp",
     "MultiHeadAttentionDecodeWithKVCacheOp",
