@@ -81,10 +81,28 @@ _MAX_POOL3D_BENCH_PARAMS = [
     pytest.param(1, 8, 8, 32, 32, 3, 1, 1, 2, torch.float16, id="32x32-k3-d2"),
 
     # -----------------------------------------------------------------------
+    # Large spatial, stride=1 (TileOPs advantage at high output counts)
+    # -----------------------------------------------------------------------
+    pytest.param(1, 16,  8,  56,  56,  3, 1, 1, 1, torch.float16, id="c16-d8-56x56-k3"),
+    pytest.param(1, 32,  8,  56,  56,  3, 1, 1, 1, torch.float16, id="c32-d8-56x56-k3"),
+    pytest.param(1, 32,  8, 112, 112,  3, 1, 1, 1, torch.float16, id="c32-d8-112x112-k3"),
+    pytest.param(1, 16, 16, 112, 112,  3, 1, 1, 1, torch.float16, id="c16-d16-112x112-k3"),
+    pytest.param(1,  8,  8, 112, 112,  3, 1, 1, 1, torch.float16, id="c8-d8-112x112-k3"),
+    pytest.param(1,  8,  8, 224, 224,  3, 1, 1, 1, torch.float16, id="c8-d8-224x224-k3"),
+    pytest.param(1, 16, 32,  56,  56,  3, 1, 1, 1, torch.float16, id="c16-d32-56x56-k3"),
+    pytest.param(1, 16, 64,  32,  32,  3, 1, 1, 1, torch.float16, id="c16-d64-32x32-k3"),
+    pytest.param(1, 16,  8,  56,  56,  5, 1, 2, 1, torch.float16, id="c16-d8-56x56-k5"),
+    pytest.param(1,  8,  8,  56,  56,  7, 1, 3, 1, torch.float16, id="c8-d8-56x56-k7"),
+    pytest.param(1,  8,  8,  56,  56,  3, 1, 1, 2, torch.float16, id="c8-d8-56x56-k3-d2"),
+    pytest.param(1,  8, 32, 112, 112,  3, 2, 1, 1, torch.float16, id="c8-d32-112x112-k3-s2"),
+
+    # -----------------------------------------------------------------------
     # Batch > 1
     # -----------------------------------------------------------------------
     pytest.param(4, 8, 8, 16, 16, 2, 2, 0, 1, torch.float16, id="B4-c8-d8-16x16-k2"),
     pytest.param(8, 8, 8, 16, 16, 2, 2, 0, 1, torch.float16, id="B8-c8-d8-16x16-k2"),
+    pytest.param(4, 8, 8, 56, 56, 3, 1, 1, 1, torch.float16, id="B4-c8-d8-56x56-k3"),
+    pytest.param(8, 8, 8, 56, 56, 3, 1, 1, 1, torch.float16, id="B8-c8-d8-56x56-k3"),
 
     # -----------------------------------------------------------------------
     # Non-cubic kernel

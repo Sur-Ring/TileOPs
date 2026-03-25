@@ -80,16 +80,31 @@ _MAX_POOL1D_BENCH_PARAMS = [
     pytest.param(1, 64, 512, 5, 1, 2, 2, torch.float16, id="l512-k5-d2"),
 
     # -----------------------------------------------------------------------
-    # Large length
+    # Large length — stride=2 (output-count limited)
     # -----------------------------------------------------------------------
     pytest.param(1, 64, 2048, 2, 2, 0, 1, torch.float16, id="l2048-k2"),
     pytest.param(1, 64, 4096, 2, 2, 0, 1, torch.float16, id="l4096-k2"),
+
+    # -----------------------------------------------------------------------
+    # Large length — stride=1 (TileOPs advantage at high output counts)
+    # -----------------------------------------------------------------------
+    pytest.param(1, 64,  16384, 3, 1, 1, 1, torch.float16, id="l16384-k3"),
+    pytest.param(1, 64,  32768, 3, 1, 1, 1, torch.float16, id="l32768-k3"),
+    pytest.param(1, 64,  65536, 3, 1, 1, 1, torch.float16, id="l65536-k3"),
+    pytest.param(1, 128, 8192,  3, 1, 1, 1, torch.float16, id="c128-l8192-k3"),
+    pytest.param(1, 64,  16384, 7, 1, 3, 1, torch.float16, id="l16384-k7"),
+    pytest.param(1, 64,  32768, 7, 1, 3, 1, torch.float16, id="l32768-k7"),
+    pytest.param(1, 32,  32768, 5, 1, 2, 1, torch.float16, id="l32768-k5"),
+    pytest.param(1, 32,  16384, 5, 1, 2, 1, torch.float16, id="l16384-k5"),
+    pytest.param(1, 64,  16384, 3, 1, 1, 2, torch.float16, id="l16384-k3-d2"),
+    pytest.param(1, 64,  8192,  5, 1, 2, 2, torch.float16, id="l8192-k5-d2"),
 
     # -----------------------------------------------------------------------
     # Batch > 1
     # -----------------------------------------------------------------------
     pytest.param(4, 64, 1024, 2, 2, 0, 1, torch.float16, id="B4-c64-l1024-k2"),
     pytest.param(8, 64, 1024, 2, 2, 0, 1, torch.float16, id="B8-c64-l1024-k2"),
+    pytest.param(8, 64, 4096, 3, 1, 1, 1, torch.float16, id="B8-c64-l4096-k3"),
 ]
 
 
